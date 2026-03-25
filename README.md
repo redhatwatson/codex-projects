@@ -24,6 +24,12 @@ A lightweight web app to keep records of your son's books like a personal librar
 
 This repo includes `.github/workflows/deploy-pages.yml`, so deployment is automatic on every push to `main`.
 
+### If deployment fails with "Setup Pages: Not Found"
+
+If you see a `Get Pages site failed` / `HttpError: Not Found`, it usually means Pages has not been initialized yet for the repo.
+This workflow already sets `enablement: true` in `actions/configure-pages`, which asks GitHub to enable Pages automatically on first run.
+If it still fails, open **Settings → Pages** once in the GitHub UI and confirm **Source = GitHub Actions**, then rerun the workflow.
+
 ### Option 2: GitHub Codespaces (run instantly in cloud)
 
 1. Open the repo on GitHub.
