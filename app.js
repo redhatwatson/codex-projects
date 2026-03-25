@@ -9,6 +9,21 @@ const statusFilter = document.getElementById("filter-status");
 const exportButton = document.getElementById("export-books");
 const importInput = document.getElementById("import-books");
 const backupStatus = document.getElementById("backup-status");
+const backupUtils = window.BackupUtils;
+
+const normalizeRating = (rating) => {
+  const normalized = String(rating ?? "").trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (!/^[1-5]$/.test(normalized)) {
+    return "";
+  }
+
+  return normalized;
+};
 
 const setBackupStatus = (message, isError = false) => {
   if (!backupStatus) {
@@ -26,7 +41,7 @@ const normalizeBook = (book) => ({
   genre: typeof book.genre === "string" ? book.genre.trim() : "",
   readingLevel: typeof book.readingLevel === "string" ? book.readingLevel.trim() : "",
   status: ["to-read", "reading", "finished"].includes(book.status) ? book.status : "to-read",
-  rating: typeof book.rating === "string" || typeof book.rating === "number" ? String(book.rating) : "",
+  rating: normalizeRating(book.rating),
   notes: typeof book.notes === "string" ? book.notes.trim() : "",
 });
 
@@ -148,7 +163,7 @@ const renderBooks = () => {
         <p class="book-meta">
           ${escapeHtml(book.author)} • ${escapeHtml(book.genre || "No genre")} •
           ${escapeHtml(book.readingLevel || "No level")} •
-          Status: ${escapeHtml(book.status)} • Rating: ${book.rating || "-"}
+          Status: ${escapeHtml(book.status)} • Rating: ${escapeHtml(book.rating || "-")}
         </p>
         ${book.notes ? `<p class="book-notes">📝 ${escapeHtml(book.notes)}</p>` : ""}
         <div class="book-actions">
@@ -160,24 +175,44 @@ const renderBooks = () => {
     .join("");
 };
 
-const downloadBackup = () => {
+const downloadBackup = async () => {
+  if (!backupUtils) {
+    setBackupStatus("Backup tools are unavailable.", true);
+    return;
+  }
+
   const payload = {
     exportedAt: new Date().toISOString(),
     version: storageVersion,
     books: readBooks(),
   };
 
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
   const stamp = new Date().toISOString().slice(0, 10);
+  const fileName = `sons-library-backup-${stamp}.json`;
 
-  link.href = url;
-  link.download = `sons-library-backup-${stamp}.json`;
-  link.click();
+  const result = await backupUtils.exportBackupFile({
+    payload,
+    fileName,
+    windowRef: window,
+    documentRef: document,
+  });
 
-  URL.revokeObjectURL(url);
-  setBackupStatus("Backup exported successfully.");
+  if (result.status === "saved") {
+    setBackupStatus("Backup exported successfully.");
+    return;
+  }
+
+  if (result.status === "downloaded") {
+    setBackupStatus("Backup downloaded to your browser's default download location.");
+    return;
+  }
+
+  if (result.status === "canceled") {
+    setBackupStatus("Backup export canceled.");
+    return;
+  }
+
+  setBackupStatus("Export failed. Please try again.", true);
 };
 
 const handleImport = async (event) => {
