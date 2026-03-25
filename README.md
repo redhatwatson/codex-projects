@@ -33,12 +33,33 @@ If it still fails, open **Settings → Pages** once in the GitHub UI and confirm
 ### Option 2: GitHub Codespaces (run instantly in cloud)
 
 1. Open the repo on GitHub.
-2. Click **Code → Codespaces → Create codespace on main**.
-3. In the Codespaces terminal run:
+2. Switch to your feature branch (recommended before opening a PR).
+3. Click **Code → Codespaces → Create codespace on current branch**.
+4. In the Codespaces terminal run:
    ```bash
    python3 -m http.server 8080
    ```
-4. Open forwarded port `8080` in the browser tab.
+5. Open forwarded port `8080` in the browser tab.
+
+### Testing branch changes in Codespaces before opening a PR
+
+Use this checklist to validate changes on your branch before you commit/push:
+
+1. Create/open a Codespace on your feature branch.
+2. Start the app:
+   ```bash
+   python3 -m http.server 8080
+   ```
+3. In the browser tab, verify your feature manually (example for backups):
+   - Add a few books.
+   - Click **Export Backup** and confirm file save/download behavior.
+   - Click **Import Backup** and confirm records are restored.
+4. Run automated checks from the terminal:
+   ```bash
+   node --check app.js
+   node --test
+   ```
+5. Only then commit changes and open/update your PR.
 
 ## Run locally (optional)
 
