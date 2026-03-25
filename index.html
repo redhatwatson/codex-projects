@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Son's Library</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>📚 My Son's Library</h1>
+      <p>Keep track of every book, progress, and favorites in one place.</p>
+    </header>
+
+    <main class="layout">
+      <section class="card form-card">
+        <h2>Add a Book</h2>
+        <form id="book-form">
+          <label>
+            Title
+            <input type="text" id="title" required />
+          </label>
+          <label>
+            Author
+            <input type="text" id="author" required />
+          </label>
+          <label>
+            Genre
+            <input type="text" id="genre" placeholder="Adventure, Science, Mystery..." />
+          </label>
+          <label>
+            Reading Level
+            <input type="text" id="readingLevel" placeholder="Beginner, Grade 2, etc." />
+          </label>
+          <label>
+            Status
+            <select id="status">
+              <option value="to-read">To Read</option>
+              <option value="reading">Reading</option>
+              <option value="finished">Finished</option>
+            </select>
+          </label>
+          <label>
+            Rating (1-5)
+            <input type="number" id="rating" min="1" max="5" />
+          </label>
+          <label>
+            Notes
+            <textarea id="notes" rows="3" placeholder="What did he like about this book?"></textarea>
+          </label>
+          <button type="submit">Save Book</button>
+        </form>
+      </section>
+
+      <section class="card library-card">
+        <div class="library-header">
+          <h2>Library Collection</h2>
+          <div class="controls">
+            <input type="search" id="search" placeholder="Search title, author, genre..." />
+            <select id="filter-status">
+              <option value="all">All Statuses</option>
+              <option value="to-read">To Read</option>
+              <option value="reading">Reading</option>
+              <option value="finished">Finished</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="stats" id="stats"></div>
+        <ul id="book-list" class="book-list"></ul>
+      </section>
+
+      <aside class="card ideas-card">
+        <h2>Feature Ideas to Add Next</h2>
+        <ul>
+          <li>📷 Book cover scanner (OCR) for title/author autofill.</li>
+          <li>🧺 Zone management: play pen, bedroom, car, storage.</li>
+          <li>🔁 Weekly/monthly rotation planner with one-click apply.</li>
+          <li>⭐ Track favorites and read count history over time.</li>
+          <li>🧠 On-demand recommendations balancing variety + favorites.</li>
+          <li>📤 Export/backup your library to JSON or CSV.</li>
+        </ul>
+      </aside>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
