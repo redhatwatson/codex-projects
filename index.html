@@ -66,6 +66,13 @@
           </div>
         </div>
 
+        <div class="backup-controls">
+          <button type="button" id="export-books" class="secondary-btn">Export Backup</button>
+          <label class="secondary-btn file-upload-btn" for="import-books">Import Backup</label>
+          <input type="file" id="import-books" accept="application/json" />
+        </div>
+        <p id="backup-status" class="backup-status" aria-live="polite"></p>
+
         <div class="stats" id="stats"></div>
         <ul id="book-list" class="book-list"></ul>
       </section>
