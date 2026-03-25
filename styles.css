@@ -110,6 +110,47 @@ button:hover {
   min-width: 170px;
 }
 
+.backup-controls {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.secondary-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.45rem 0.65rem;
+}
+
+.secondary-btn:hover {
+  background: var(--accent-2);
+}
+
+.file-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+#import-books {
+  display: none;
+}
+
+.backup-status {
+  margin: 0.5rem 0 0;
+  min-height: 1.2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.backup-status.error {
+  color: #b42318;
+}
+
 .stats {
   margin: 0.8rem 0;
   display: flex;

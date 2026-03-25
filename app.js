@@ -1,13 +1,89 @@
 const storageKey = "sonsLibraryBooks";
+const storageVersion = 2;
 
 const bookForm = document.getElementById("book-form");
 const bookList = document.getElementById("book-list");
 const statsEl = document.getElementById("stats");
 const searchInput = document.getElementById("search");
 const statusFilter = document.getElementById("filter-status");
+const exportButton = document.getElementById("export-books");
+const importInput = document.getElementById("import-books");
+const backupStatus = document.getElementById("backup-status");
+const backupUtils = window.BackupUtils;
 
-const readBooks = () => JSON.parse(localStorage.getItem(storageKey) || "[]");
-const saveBooks = (books) => localStorage.setItem(storageKey, JSON.stringify(books));
+const setBackupStatus = (message, isError = false) => {
+  if (!backupStatus) {
+    return;
+  }
+
+  backupStatus.textContent = message;
+  backupStatus.classList.toggle("error", isError);
+};
+
+const normalizeBook = (book) => ({
+  id: typeof book.id === "string" && book.id ? book.id : crypto.randomUUID(),
+  title: typeof book.title === "string" ? book.title.trim() : "",
+  author: typeof book.author === "string" ? book.author.trim() : "",
+  genre: typeof book.genre === "string" ? book.genre.trim() : "",
+  readingLevel: typeof book.readingLevel === "string" ? book.readingLevel.trim() : "",
+  status: ["to-read", "reading", "finished"].includes(book.status) ? book.status : "to-read",
+  rating: typeof book.rating === "string" || typeof book.rating === "number" ? String(book.rating) : "",
+  notes: typeof book.notes === "string" ? book.notes.trim() : "",
+});
+
+const sanitizeBooks = (books) =>
+  books
+    .filter((book) => book && typeof book === "object")
+    .map(normalizeBook)
+    .filter((book) => book.title && book.author);
+
+const saveBooks = (books) => {
+  const payload = {
+    version: storageVersion,
+    updatedAt: new Date().toISOString(),
+    books: sanitizeBooks(books),
+  };
+
+  localStorage.setItem(storageKey, JSON.stringify(payload));
+};
+
+const readBooks = () => {
+  const raw = localStorage.getItem(storageKey);
+
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+
+    // Migration guard: previous versions stored a raw array.
+    if (Array.isArray(parsed)) {
+      const migrated = sanitizeBooks(parsed);
+      saveBooks(migrated);
+      setBackupStatus("Storage upgraded to the latest format.");
+      return migrated;
+    }
+
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.books)) {
+      const sanitized = sanitizeBooks(parsed.books);
+
+      if (parsed.version !== storageVersion || sanitized.length !== parsed.books.length) {
+        saveBooks(sanitized);
+      }
+
+      return sanitized;
+    }
+
+    setBackupStatus("Stored data format was invalid and has been reset.", true);
+    localStorage.removeItem(storageKey);
+    return [];
+  } catch {
+    setBackupStatus("Stored data was corrupted and has been reset.", true);
+    localStorage.removeItem(storageKey);
+    return [];
+  }
+};
 
 const escapeHtml = (text) =>
   text
@@ -85,6 +161,73 @@ const renderBooks = () => {
     .join("");
 };
 
+const downloadBackup = async () => {
+  if (!backupUtils) {
+    setBackupStatus("Backup tools are unavailable.", true);
+    return;
+  }
+
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    version: storageVersion,
+    books: readBooks(),
+  };
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  const fileName = `sons-library-backup-${stamp}.json`;
+
+  const result = await backupUtils.exportBackupFile({
+    payload,
+    fileName,
+    windowRef: window,
+    documentRef: document,
+  });
+
+  if (result.status === "saved") {
+    setBackupStatus("Backup exported successfully.");
+    return;
+  }
+
+  if (result.status === "downloaded") {
+    setBackupStatus("Backup downloaded to your browser's default download location.");
+    return;
+  }
+
+  if (result.status === "canceled") {
+    setBackupStatus("Backup export canceled.");
+    return;
+  }
+
+  setBackupStatus("Export failed. Please try again.", true);
+};
+
+const handleImport = async (event) => {
+  const file = event.target.files?.[0];
+
+  if (!file) {
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const importedBooks = Array.isArray(parsed) ? parsed : parsed.books;
+
+    if (!Array.isArray(importedBooks)) {
+      throw new Error("Invalid backup format");
+    }
+
+    const sanitized = sanitizeBooks(importedBooks);
+    saveBooks(sanitized);
+    renderBooks();
+    setBackupStatus(`Imported ${sanitized.length} books from backup.`);
+  } catch {
+    setBackupStatus("Import failed. Please choose a valid JSON backup file.", true);
+  } finally {
+    event.target.value = "";
+  }
+};
+
 bookForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const formData = new FormData(bookForm);
@@ -123,6 +266,14 @@ bookList.addEventListener("click", (event) => {
     renderBooks();
   }
 });
+
+if (exportButton) {
+  exportButton.addEventListener("click", downloadBackup);
+}
+
+if (importInput) {
+  importInput.addEventListener("change", handleImport);
+}
 
 searchInput.addEventListener("input", renderBooks);
 statusFilter.addEventListener("change", renderBooks);
