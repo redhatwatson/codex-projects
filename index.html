@@ -24,10 +24,14 @@
             <div class="scanner-actions">
               <label class="secondary-btn file-upload-btn" for="cover-scan">Scan Cover</label>
               <input type="file" id="cover-scan" accept="image/*" capture="environment" />
+              <button type="button" id="start-camera" class="secondary-btn">Take Photo</button>
+              <button type="button" id="capture-photo" class="secondary-btn" hidden>Capture Photo</button>
               <button type="button" id="apply-ocr" class="secondary-btn" disabled>
                 Autofill Title + Author
               </button>
             </div>
+            <video id="camera-preview" class="camera-preview" autoplay playsinline hidden></video>
+            <canvas id="capture-canvas" hidden></canvas>
             <img
               id="scan-preview"
               class="scan-preview"

@@ -91,6 +91,16 @@ body {
   background: #fff;
 }
 
+.camera-preview {
+  margin-top: 0.65rem;
+  width: 100%;
+  max-height: 240px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #000;
+  object-fit: cover;
+}
+
 .scan-status {
   min-height: 1.1rem;
   margin: 0.55rem 0 0;

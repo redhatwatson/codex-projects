@@ -13,6 +13,10 @@ const coverScanInput = document.getElementById("cover-scan");
 const scanPreview = document.getElementById("scan-preview");
 const scanStatus = document.getElementById("scan-status");
 const applyOcrButton = document.getElementById("apply-ocr");
+const startCameraButton = document.getElementById("start-camera");
+const capturePhotoButton = document.getElementById("capture-photo");
+const cameraPreview = document.getElementById("camera-preview");
+const captureCanvas = document.getElementById("capture-canvas");
 const titleInput = document.getElementById("title");
 const authorInput = document.getElementById("author");
 const backupUtils = window.BackupUtils;
@@ -21,6 +25,7 @@ const tesseractCdn = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract
 let coverScanDataUrl = "";
 let ocrSuggestion = null;
 let tesseractLoadPromise = null;
+let cameraStream = null;
 
 const normalizeRating = (rating) => {
   const normalized = String(rating ?? "").trim();
@@ -149,6 +154,83 @@ const applyOcrSuggestion = () => {
   }
 
   setScanStatus("Autofill applied. Review and edit before saving.");
+};
+
+const stopCameraStream = () => {
+  if (!cameraStream) {
+    return;
+  }
+
+  cameraStream.getTracks().forEach((track) => track.stop());
+  cameraStream = null;
+
+  if (cameraPreview) {
+    cameraPreview.srcObject = null;
+    cameraPreview.hidden = true;
+  }
+
+  if (capturePhotoButton) {
+    capturePhotoButton.hidden = true;
+  }
+
+  if (startCameraButton) {
+    startCameraButton.hidden = false;
+  }
+};
+
+const startCameraCapture = async () => {
+  if (!navigator.mediaDevices?.getUserMedia || !cameraPreview) {
+    setScanStatus("Camera capture is not supported on this browser. Please upload an image instead.", true);
+    return;
+  }
+
+  stopCameraStream();
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    });
+    cameraPreview.srcObject = cameraStream;
+    cameraPreview.hidden = false;
+    capturePhotoButton.hidden = false;
+    startCameraButton.hidden = true;
+    setScanStatus("Camera is ready. Tap “Capture Photo” when the cover is in frame.");
+  } catch {
+    setScanStatus("Camera access was blocked. Please allow permission or upload from files.", true);
+  }
+};
+
+const capturePhoto = () => {
+  if (!cameraPreview || !captureCanvas || !cameraStream) {
+    return;
+  }
+
+  const width = cameraPreview.videoWidth;
+  const height = cameraPreview.videoHeight;
+
+  if (!width || !height) {
+    setScanStatus("Camera is still starting. Please try again in a moment.", true);
+    return;
+  }
+
+  captureCanvas.width = width;
+  captureCanvas.height = height;
+  const context = captureCanvas.getContext("2d");
+
+  if (!context) {
+    setScanStatus("Could not process captured image.", true);
+    return;
+  }
+
+  context.drawImage(cameraPreview, 0, 0, width, height);
+  coverScanDataUrl = captureCanvas.toDataURL("image/jpeg", 0.95);
+  scanPreview.src = coverScanDataUrl;
+  scanPreview.hidden = false;
+  ocrSuggestion = null;
+  applyOcrButton.disabled = false;
+  setScanStatus("Photo captured. Click “Autofill Title + Author” to run OCR.");
+  stopCameraStream();
 };
 
 const normalizeBook = (book) => ({
@@ -384,6 +466,7 @@ bookForm.addEventListener("submit", (event) => {
   bookForm.reset();
   coverScanDataUrl = "";
   ocrSuggestion = null;
+  stopCameraStream();
   if (scanPreview) {
     scanPreview.hidden = true;
     scanPreview.removeAttribute("src");
@@ -410,6 +493,8 @@ if (coverScanInput) {
       return;
     }
 
+    stopCameraStream();
+
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
@@ -433,6 +518,16 @@ if (applyOcrButton) {
   applyOcrButton.addEventListener("click", applyOcrSuggestion);
 }
 
+if (startCameraButton) {
+  startCameraButton.addEventListener("click", () => {
+    void startCameraCapture();
+  });
+}
+
+if (capturePhotoButton) {
+  capturePhotoButton.addEventListener("click", capturePhoto);
+}
+
 bookList.addEventListener("click", (event) => {
   if (!(event.target instanceof HTMLElement)) {
     return;
@@ -453,6 +548,8 @@ if (exportButton) {
 if (importInput) {
   importInput.addEventListener("change", handleImport);
 }
+
+window.addEventListener("beforeunload", stopCameraStream);
 
 searchInput.addEventListener("input", renderBooks);
 statusFilter.addEventListener("change", renderBooks);
