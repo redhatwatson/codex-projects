@@ -9,7 +9,18 @@ const statusFilter = document.getElementById("filter-status");
 const exportButton = document.getElementById("export-books");
 const importInput = document.getElementById("import-books");
 const backupStatus = document.getElementById("backup-status");
+const coverScanInput = document.getElementById("cover-scan");
+const scanPreview = document.getElementById("scan-preview");
+const scanStatus = document.getElementById("scan-status");
+const applyOcrButton = document.getElementById("apply-ocr");
+const titleInput = document.getElementById("title");
+const authorInput = document.getElementById("author");
 const backupUtils = window.BackupUtils;
+const tesseractCdn = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+
+let coverScanDataUrl = "";
+let ocrSuggestion = null;
+let tesseractLoadPromise = null;
 
 const normalizeRating = (rating) => {
   const normalized = String(rating ?? "").trim();
@@ -32,6 +43,112 @@ const setBackupStatus = (message, isError = false) => {
 
   backupStatus.textContent = message;
   backupStatus.classList.toggle("error", isError);
+};
+
+const setScanStatus = (message, isError = false) => {
+  if (!scanStatus) {
+    return;
+  }
+
+  scanStatus.textContent = message;
+  scanStatus.classList.toggle("error", isError);
+};
+
+const parseOcrText = (rawText) => {
+  const lines = rawText
+    .split("\n")
+    .map((line) => line.replace(/[|*_~`]/g, "").trim())
+    .filter(Boolean)
+    .filter((line) => /^[\p{L}\p{N}\s.,:'"-]+$/u.test(line))
+    .filter((line) => !/^\d+$/.test(line))
+    .filter((line) => line.length >= 3);
+
+  if (!lines.length) {
+    return null;
+  }
+
+  const title = lines
+    .filter((line) => !/^by\s+/i.test(line))
+    .sort((a, b) => b.length - a.length)[0];
+
+  const byLine = lines.find((line) => /^by\s+/i.test(line));
+  const authorFromByLine = byLine ? byLine.replace(/^by\s+/i, "").trim() : "";
+
+  const authorCandidate = lines.find((line) => {
+    const words = line.split(/\s+/);
+    return words.length >= 2 && words.length <= 5 && words.every((word) => /^[\p{L}.'-]+$/u.test(word));
+  });
+
+  const author = authorFromByLine || authorCandidate || "";
+
+  if (!title && !author) {
+    return null;
+  }
+
+  return { title: title || "", author };
+};
+
+const loadTesseract = async () => {
+  if (window.Tesseract) {
+    return window.Tesseract;
+  }
+
+  if (!tesseractLoadPromise) {
+    tesseractLoadPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = tesseractCdn;
+      script.async = true;
+      script.onload = () => resolve(window.Tesseract);
+      script.onerror = () => reject(new Error("Failed to load OCR library"));
+      document.head.append(script);
+    });
+  }
+
+  return tesseractLoadPromise;
+};
+
+const runCoverOcr = async () => {
+  if (!coverScanDataUrl) {
+    setScanStatus("Pick a cover image first.", true);
+    return;
+  }
+
+  setScanStatus("Scanning cover… this can take a few seconds.");
+  applyOcrButton.disabled = true;
+
+  try {
+    const Tesseract = await loadTesseract();
+    const result = await Tesseract.recognize(coverScanDataUrl, "eng");
+    ocrSuggestion = parseOcrText(result?.data?.text || "");
+
+    if (!ocrSuggestion) {
+      setScanStatus("Could not confidently detect title/author. You can still enter them manually.", true);
+      return;
+    }
+
+    setScanStatus("OCR ready. Click again to apply autofill.");
+    applyOcrButton.disabled = false;
+  } catch {
+    setScanStatus("OCR failed to run. Please try another clear cover image.", true);
+    applyOcrButton.disabled = false;
+  }
+};
+
+const applyOcrSuggestion = () => {
+  if (!ocrSuggestion) {
+    void runCoverOcr();
+    return;
+  }
+
+  if (ocrSuggestion.title) {
+    titleInput.value = ocrSuggestion.title;
+  }
+
+  if (ocrSuggestion.author) {
+    authorInput.value = ocrSuggestion.author;
+  }
+
+  setScanStatus("Autofill applied. Review and edit before saving.");
 };
 
 const normalizeBook = (book) => ({
@@ -248,8 +365,8 @@ bookForm.addEventListener("submit", (event) => {
 
   const newBook = {
     id: crypto.randomUUID(),
-    title: (formData.get("title") || document.getElementById("title").value).trim(),
-    author: (formData.get("author") || document.getElementById("author").value).trim(),
+    title: (formData.get("title") || titleInput.value).trim(),
+    author: (formData.get("author") || authorInput.value).trim(),
     genre: document.getElementById("genre").value.trim(),
     readingLevel: document.getElementById("readingLevel").value.trim(),
     status: document.getElementById("status").value,
@@ -265,8 +382,56 @@ bookForm.addEventListener("submit", (event) => {
   books.unshift(newBook);
   saveBooks(books);
   bookForm.reset();
+  coverScanDataUrl = "";
+  ocrSuggestion = null;
+  if (scanPreview) {
+    scanPreview.hidden = true;
+    scanPreview.removeAttribute("src");
+  }
+  if (applyOcrButton) {
+    applyOcrButton.disabled = true;
+  }
+  setScanStatus("");
   renderBooks();
 });
+
+if (coverScanInput) {
+  coverScanInput.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+
+    ocrSuggestion = null;
+    applyOcrButton.disabled = false;
+
+    if (!file) {
+      coverScanDataUrl = "";
+      scanPreview.hidden = true;
+      applyOcrButton.disabled = true;
+      setScanStatus("");
+      return;
+    }
+
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    if (typeof dataUrl !== "string") {
+      setScanStatus("Failed to read selected image.", true);
+      return;
+    }
+
+    coverScanDataUrl = dataUrl;
+    scanPreview.src = dataUrl;
+    scanPreview.hidden = false;
+    setScanStatus("Cover loaded. Click “Autofill Title + Author” to run OCR.");
+  });
+}
+
+if (applyOcrButton) {
+  applyOcrButton.addEventListener("click", applyOcrSuggestion);
+}
 
 bookList.addEventListener("click", (event) => {
   if (!(event.target instanceof HTMLElement)) {
