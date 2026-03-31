@@ -125,13 +125,56 @@ const scoreSuggestion = (suggestion) => {
   return suggestion.title ? suggestion.title.length : 0;
 };
 
-const loadImageFromDataUrl = (dataUrl) =>
+const loadImageFromUrl = (url) =>
   new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("Could not decode selected image"));
-    image.src = dataUrl;
+    image.src = url;
   });
+
+const loadImageFromDataUrl = (dataUrl) => loadImageFromUrl(dataUrl);
+
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Failed to read selected image"));
+    reader.onabort = () => reject(new Error("Image selection was canceled"));
+    reader.readAsDataURL(file);
+  });
+
+const convertFileToPreviewDataUrl = async (file) => {
+  const directDataUrl = await readFileAsDataUrl(file);
+
+  if (typeof directDataUrl === "string") {
+    try {
+      await loadImageFromDataUrl(directDataUrl);
+      return directDataUrl;
+    } catch {
+      // Fall through to object URL decode path for iOS/browser format quirks.
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await loadImageFromUrl(objectUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, image.width);
+    canvas.height = Math.max(1, image.height);
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Canvas context unavailable");
+    }
+
+    context.drawImage(image, 0, 0);
+    return canvas.toDataURL("image/jpeg", 0.95);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+};
 
 const preprocessImageForOcr = async (dataUrl) => {
   const image = await loadImageFromDataUrl(dataUrl);
@@ -607,23 +650,24 @@ if (coverScanInput) {
     }
 
     stopCameraStream();
+    setScanStatus("Loading selected image...");
 
-    const dataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
-    if (typeof dataUrl !== "string") {
-      setScanStatus("Failed to read selected image.", true);
-      return;
+    try {
+      const dataUrl = await convertFileToPreviewDataUrl(file);
+      coverScanDataUrl = dataUrl;
+      scanPreview.src = dataUrl;
+      scanPreview.hidden = false;
+      setScanStatus("Cover loaded. Click “Autofill Title” to run OCR.");
+    } catch {
+      coverScanDataUrl = "";
+      scanPreview.hidden = true;
+      scanPreview.removeAttribute("src");
+      applyOcrButton.disabled = true;
+      setScanStatus(
+        "Could not load that image on this device. On iPhone, try taking a photo or choose a compatible format.",
+        true,
+      );
     }
-
-    coverScanDataUrl = dataUrl;
-    scanPreview.src = dataUrl;
-    scanPreview.hidden = false;
-    setScanStatus("Cover loaded. Click “Autofill Title” to run OCR.");
   });
 }
 
