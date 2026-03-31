@@ -16,6 +16,31 @@
       <section class="card form-card">
         <h2>Add a Book</h2>
         <form id="book-form">
+          <div class="scanner-panel">
+            <p class="scanner-title">Book Cover Scanner (OCR Autofill)</p>
+            <p class="scanner-description">
+              Upload a cover photo and we will try to detect the book title automatically.
+            </p>
+            <div class="scanner-actions">
+              <label class="secondary-btn file-upload-btn" for="cover-scan">Scan Cover</label>
+              <input type="file" id="cover-scan" accept="image/*" capture="environment" />
+              <button type="button" id="start-camera" class="secondary-btn">Take Photo</button>
+              <button type="button" id="capture-photo" class="secondary-btn" hidden>Capture Photo</button>
+              <button type="button" id="apply-ocr" class="secondary-btn" disabled>
+                Autofill Title
+              </button>
+            </div>
+            <video id="camera-preview" class="camera-preview" autoplay playsinline hidden></video>
+            <canvas id="capture-canvas" hidden></canvas>
+            <img
+              id="scan-preview"
+              class="scan-preview"
+              alt="Uploaded book cover preview"
+              hidden
+            />
+            <p id="scan-status" class="scan-status" aria-live="polite"></p>
+          </div>
+
           <label>
             Title
             <input type="text" id="title" required />
@@ -80,7 +105,7 @@
       <aside class="card ideas-card">
         <h2>Feature Ideas to Add Next</h2>
         <ul>
-          <li>📷 Cover image upload for each book.</li>
+          <li>✅ Cover scanner with OCR autofill.</li>
           <li>⏱️ Reading session timer and streak tracking.</li>
           <li>🎯 Monthly reading goals with progress bars.</li>
           <li>🏅 Reward badges for completed milestones.</li>
