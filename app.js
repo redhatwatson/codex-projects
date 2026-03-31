@@ -26,6 +26,7 @@ let coverScanDataUrl = "";
 let ocrSuggestion = null;
 let tesseractLoadPromise = null;
 let cameraStream = null;
+const OCR_MIN_CONFIDENCE = 45;
 
 const normalizeRating = (rating) => {
   const normalized = String(rating ?? "").trim();
@@ -93,6 +94,113 @@ const parseOcrText = (rawText) => {
   return { title: title || "", author };
 };
 
+const parseOcrLines = (lines) => {
+  if (!lines.length) {
+    return null;
+  }
+
+  return parseOcrText(lines.join("\n"));
+};
+
+const extractOcrLines = (ocrResult) => {
+  const words = ocrResult?.data?.words ?? [];
+
+  if (!words.length) {
+    return [];
+  }
+
+  const groupedLines = new Map();
+
+  words.forEach((word) => {
+    if (!word?.text || word.confidence < OCR_MIN_CONFIDENCE) {
+      return;
+    }
+
+    const lineKey = `${word.block_num ?? 0}-${word.par_num ?? 0}-${word.line_num ?? 0}`;
+
+    if (!groupedLines.has(lineKey)) {
+      groupedLines.set(lineKey, []);
+    }
+
+    groupedLines.get(lineKey).push(word.text.trim());
+  });
+
+  return [...groupedLines.values()].map((lineWords) => lineWords.join(" ").trim()).filter(Boolean);
+};
+
+const scoreSuggestion = (suggestion) => {
+  if (!suggestion) {
+    return -1;
+  }
+
+  const titleScore = suggestion.title ? suggestion.title.length : 0;
+  const authorScore = suggestion.author ? 40 + suggestion.author.length : 0;
+  return titleScore + authorScore;
+};
+
+const loadImageFromDataUrl = (dataUrl) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not decode selected image"));
+    image.src = dataUrl;
+  });
+
+const preprocessImageForOcr = async (dataUrl) => {
+  const image = await loadImageFromDataUrl(dataUrl);
+  const canvas = document.createElement("canvas");
+  const maxDimension = 2200;
+  const scale = Math.min(maxDimension / Math.max(image.width, image.height), 2);
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+
+  if (!context) {
+    return dataUrl;
+  }
+
+  context.drawImage(image, 0, 0, width, height);
+  const imageData = context.getImageData(0, 0, width, height);
+  const pixels = imageData.data;
+
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    const grayscale = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const boosted = grayscale > 145 ? 255 : grayscale < 85 ? 0 : grayscale;
+    pixels[i] = boosted;
+    pixels[i + 1] = boosted;
+    pixels[i + 2] = boosted;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/png");
+};
+
+const runSingleOcrPass = async (Tesseract, imageData, pageSegMode) => {
+  const result = await Tesseract.recognize(imageData, "eng", {
+    tessedit_pageseg_mode: String(pageSegMode),
+    preserve_interword_spaces: "1",
+  });
+  const lineBasedSuggestion = parseOcrLines(extractOcrLines(result));
+  const fallbackSuggestion = parseOcrText(result?.data?.text || "");
+  return lineBasedSuggestion || fallbackSuggestion;
+};
+
+const buildBestOcrSuggestion = async (Tesseract, sourceDataUrl) => {
+  const preparedDataUrl = await preprocessImageForOcr(sourceDataUrl);
+  const [primaryPass, sparsePass] = await Promise.all([
+    runSingleOcrPass(Tesseract, preparedDataUrl, 6),
+    runSingleOcrPass(Tesseract, preparedDataUrl, 11),
+  ]);
+
+  return scoreSuggestion(primaryPass) >= scoreSuggestion(sparsePass) ? primaryPass : sparsePass;
+};
+
 const loadTesseract = async () => {
   if (window.Tesseract) {
     return window.Tesseract;
@@ -123,8 +231,7 @@ const runCoverOcr = async () => {
 
   try {
     const Tesseract = await loadTesseract();
-    const result = await Tesseract.recognize(coverScanDataUrl, "eng");
-    ocrSuggestion = parseOcrText(result?.data?.text || "");
+    ocrSuggestion = await buildBestOcrSuggestion(Tesseract, coverScanDataUrl);
 
     if (!ocrSuggestion) {
       setScanStatus("Could not confidently detect title/author. You can still enter them manually.", true);
