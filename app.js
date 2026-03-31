@@ -18,7 +18,6 @@ const capturePhotoButton = document.getElementById("capture-photo");
 const cameraPreview = document.getElementById("camera-preview");
 const captureCanvas = document.getElementById("capture-canvas");
 const titleInput = document.getElementById("title");
-const authorInput = document.getElementById("author");
 const backupUtils = window.BackupUtils;
 const tesseractCdn = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
 
@@ -77,21 +76,11 @@ const parseOcrText = (rawText) => {
     .filter((line) => !/^by\s+/i.test(line))
     .sort((a, b) => b.length - a.length)[0];
 
-  const byLine = lines.find((line) => /^by\s+/i.test(line));
-  const authorFromByLine = byLine ? byLine.replace(/^by\s+/i, "").trim() : "";
-
-  const authorCandidate = lines.find((line) => {
-    const words = line.split(/\s+/);
-    return words.length >= 2 && words.length <= 5 && words.every((word) => /^[\p{L}.'-]+$/u.test(word));
-  });
-
-  const author = authorFromByLine || authorCandidate || "";
-
-  if (!title && !author) {
+  if (!title) {
     return null;
   }
 
-  return { title: title || "", author };
+  return { title: title || "" };
 };
 
 const parseOcrLines = (lines) => {
@@ -133,9 +122,7 @@ const scoreSuggestion = (suggestion) => {
     return -1;
   }
 
-  const titleScore = suggestion.title ? suggestion.title.length : 0;
-  const authorScore = suggestion.author ? 40 + suggestion.author.length : 0;
-  return titleScore + authorScore;
+  return suggestion.title ? suggestion.title.length : 0;
 };
 
 const loadImageFromDataUrl = (dataUrl) =>
@@ -191,14 +178,37 @@ const runSingleOcrPass = async (Tesseract, imageData, pageSegMode) => {
   return lineBasedSuggestion || fallbackSuggestion;
 };
 
+const cropForTitleRegion = async (dataUrl) => {
+  const image = await loadImageFromDataUrl(dataUrl);
+  const canvas = document.createElement("canvas");
+  const width = Math.max(1, Math.round(image.width));
+  const height = Math.max(1, Math.round(image.height * 0.55));
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    return dataUrl;
+  }
+
+  context.drawImage(image, 0, 0, width, height, 0, 0, width, height);
+  return canvas.toDataURL("image/png");
+};
+
 const buildBestOcrSuggestion = async (Tesseract, sourceDataUrl) => {
   const preparedDataUrl = await preprocessImageForOcr(sourceDataUrl);
-  const [primaryPass, sparsePass] = await Promise.all([
+  const titleCropDataUrl = await cropForTitleRegion(preparedDataUrl);
+  const [primaryPass, sparsePass, titleCropPrimaryPass, titleCropSparsePass] = await Promise.all([
     runSingleOcrPass(Tesseract, preparedDataUrl, 6),
     runSingleOcrPass(Tesseract, preparedDataUrl, 11),
+    runSingleOcrPass(Tesseract, titleCropDataUrl, 6),
+    runSingleOcrPass(Tesseract, titleCropDataUrl, 11),
   ]);
+  const suggestions = [primaryPass, sparsePass, titleCropPrimaryPass, titleCropSparsePass];
 
-  return scoreSuggestion(primaryPass) >= scoreSuggestion(sparsePass) ? primaryPass : sparsePass;
+  return suggestions.reduce((best, current) =>
+    scoreSuggestion(current) > scoreSuggestion(best) ? current : best,
+  null);
 };
 
 const loadTesseract = async () => {
@@ -234,11 +244,11 @@ const runCoverOcr = async () => {
     ocrSuggestion = await buildBestOcrSuggestion(Tesseract, coverScanDataUrl);
 
     if (!ocrSuggestion) {
-      setScanStatus("Could not confidently detect title/author. You can still enter them manually.", true);
+      setScanStatus("Could not confidently detect the title. You can still enter it manually.", true);
       return;
     }
 
-    setScanStatus("OCR ready. Click again to apply autofill.");
+    setScanStatus("OCR ready. Click again to autofill the title.");
     applyOcrButton.disabled = false;
   } catch {
     setScanStatus("OCR failed to run. Please try another clear cover image.", true);
@@ -254,10 +264,6 @@ const applyOcrSuggestion = () => {
 
   if (ocrSuggestion.title) {
     titleInput.value = ocrSuggestion.title;
-  }
-
-  if (ocrSuggestion.author) {
-    authorInput.value = ocrSuggestion.author;
   }
 
   setScanStatus("Autofill applied. Review and edit before saving.");
@@ -336,7 +342,7 @@ const capturePhoto = () => {
   scanPreview.hidden = false;
   ocrSuggestion = null;
   applyOcrButton.disabled = false;
-  setScanStatus("Photo captured. Click “Autofill Title + Author” to run OCR.");
+  setScanStatus("Photo captured. Click “Autofill Title” to run OCR.");
   stopCameraStream();
 };
 
@@ -617,7 +623,7 @@ if (coverScanInput) {
     coverScanDataUrl = dataUrl;
     scanPreview.src = dataUrl;
     scanPreview.hidden = false;
-    setScanStatus("Cover loaded. Click “Autofill Title + Author” to run OCR.");
+    setScanStatus("Cover loaded. Click “Autofill Title” to run OCR.");
   });
 }
 
